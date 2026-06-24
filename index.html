@@ -1,0 +1,719 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>UserReport 뷰어</title>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: 'Segoe UI', sans-serif;
+      background: #f0f2f5;
+      color: #2c3e50;
+      min-height: 100vh;
+    }
+
+    header {
+      background: linear-gradient(135deg, #1a1a2e, #16213e);
+      color: white;
+      padding: 18px 32px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+    header h1 { font-size: 18px; font-weight: 600; }
+    header p  { font-size: 12px; color: rgba(255,255,255,.5); margin-top: 3px; }
+    .header-date {
+      text-align: right;
+      flex-shrink: 0;
+    }
+    .header-version {
+      display: inline-block;
+      font-size: 12px; font-weight: 700;
+      color: #1a1a2e;
+      background: rgba(255,255,255,0.92);
+      padding: 3px 10px;
+      border-radius: 20px;
+      letter-spacing: 0.3px;
+      margin-bottom: 6px;
+    }
+    .header-update {
+      font-size: 11px;
+      color: rgba(255,255,255,.45);
+    }
+    .header-update strong {
+      color: rgba(255,255,255,.75);
+      font-weight: 600;
+    }
+
+    .container { max-width: 860px; margin: 0 auto; padding: 28px 20px; }
+
+    /* Drop zone */
+    .drop-zone {
+      border: 2px dashed #b0bec5;
+      border-radius: 14px;
+      background: white;
+      padding: 52px 32px;
+      text-align: center;
+      cursor: pointer;
+      transition: all .2s;
+      margin-bottom: 24px;
+    }
+    .drop-zone.dragover { border-color: #3498db; background: #f0f8ff; }
+    .drop-zone .dz-icon { font-size: 44px; margin-bottom: 12px; }
+    .drop-zone h2 { font-size: 16px; color: #455a64; margin-bottom: 6px; }
+    .drop-zone p  { font-size: 13px; color: #90a4ae; }
+    #fi { display: none; }
+
+    .btn-pick {
+      margin-top: 16px;
+      padding: 9px 24px;
+      background: #3498db;
+      color: white;
+      border: none;
+      border-radius: 8px;
+      font-size: 13px; font-weight: 500;
+      cursor: pointer;
+    }
+    .btn-pick:hover { background: #2980b9; }
+
+    /* Add more strip */
+    .add-strip {
+      display: none;
+      align-items: center;
+      gap: 12px;
+      background: white;
+      border: 1.5px dashed #b0bec5;
+      border-radius: 10px;
+      padding: 14px 20px;
+      margin-bottom: 20px;
+      cursor: pointer;
+      transition: all .2s;
+      font-size: 13px;
+      color: #7f8c8d;
+    }
+    .add-strip:hover { border-color: #3498db; color: #3498db; }
+    .add-strip span { font-size: 20px; }
+
+    /* Count bar */
+    .count-bar {
+      display: none;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 16px;
+    }
+    .count-bar h2 { font-size: 16px; }
+    .count-bar small { font-size: 12px; color: #90a4ae; margin-top: 2px; display: block; }
+    .btn-clear {
+      padding: 7px 16px;
+      background: #ecf0f1;
+      color: #7f8c8d;
+      border: none;
+      border-radius: 8px;
+      font-size: 12px;
+      cursor: pointer;
+    }
+    .btn-clear:hover { background: #dfe6e9; }
+
+    /* Report cards */
+    .rcard {
+      background: white;
+      border-radius: 12px;
+      box-shadow: 0 1px 4px rgba(0,0,0,.08);
+      margin-bottom: 14px;
+      overflow: hidden;
+    }
+
+    .rcard-head {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 13px 18px;
+      border-bottom: 1px solid #f0f2f5;
+    }
+    .rcard-num {
+      width: 28px; height: 28px;
+      background: #e3f2fd;
+      color: #1565c0;
+      border-radius: 50%;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 12px; font-weight: 700; flex-shrink: 0;
+    }
+    .rcard-name {
+      flex: 1;
+      font-size: 13px; font-weight: 600;
+      color: #455a64;
+      word-break: break-all;
+    }
+    .version-badge {
+      font-size: 11px;
+      padding: 3px 9px;
+      border-radius: 10px;
+      background: #f3e5f5;
+      color: #6a1b9a;
+      font-weight: 600;
+      flex-shrink: 0;
+    }
+    .rcard-status {
+      font-size: 11px;
+      padding: 3px 9px;
+      border-radius: 10px;
+      font-weight: 500;
+      flex-shrink: 0;
+    }
+    .status-ok  { background: #e8f5e9; color: #2e7d32; }
+    .status-err { background: #ffeaea; color: #c0392b; }
+
+    .rcard-body { padding: 16px 18px; }
+
+    .report-text {
+      background: #f8f9fa;
+      border-left: 4px solid #3498db;
+      padding: 13px 16px;
+      border-radius: 0 8px 8px 0;
+      font-size: 14px; line-height: 1.8;
+      color: #455a64;
+      white-space: pre-wrap;
+      word-break: break-word;
+    }
+    .report-text.empty {
+      border-left-color: #b0bec5;
+      color: #90a4ae;
+      font-style: italic;
+    }
+
+    /* Images */
+    .img-grid {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      margin-top: 14px;
+    }
+    .img-item { display: flex; flex-direction: column; align-items: center; gap: 6px; }
+    .img-item img {
+      height: 160px; max-width: 100%;
+      object-fit: contain;
+      border-radius: 8px;
+      border: 1px solid #e0e0e0;
+      background: #f8f9fa;
+      cursor: pointer;
+      transition: opacity .15s;
+    }
+    .img-item img:hover { opacity: .85; }
+    .img-label { font-size: 11px; color: #90a4ae; text-align: center; word-break: break-all; }
+
+    .rcard-foot {
+      display: flex;
+      justify-content: flex-end;
+      gap: 8px;
+      padding: 10px 18px;
+      border-top: 1px solid #f5f5f5;
+    }
+    .copy-btn {
+      padding: 5px 14px;
+      background: transparent;
+      border: 1px solid #cfd8dc;
+      border-radius: 6px;
+      font-size: 12px;
+      color: #7f8c8d;
+      cursor: pointer;
+    }
+    .copy-btn:hover { background: #f5f5f5; }
+    .copy-btn.copied { border-color: #27ae60; color: #27ae60; }
+    .translate-btn {
+      padding: 5px 14px;
+      background: transparent;
+      border: 1px solid #cfd8dc;
+      border-radius: 6px;
+      font-size: 12px;
+      color: #7f8c8d;
+      cursor: pointer;
+      text-decoration: none;
+      display: inline-flex; align-items: center; gap: 4px;
+    }
+    .translate-btn:hover { background: #f5f5f5; }
+
+    /* Loading */
+    .loading-row {
+      display: flex; align-items: center; gap: 10px;
+      padding: 14px 18px;
+      color: #90a4ae; font-size: 13px;
+    }
+    .mini-spin {
+      width: 18px; height: 18px;
+      border: 2px solid #f0f2f5;
+      border-top-color: #3498db;
+      border-radius: 50%;
+      animation: spin .7s linear infinite;
+      flex-shrink: 0;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* Chart */
+    .chart-section {
+      background: white;
+      border-radius: 12px;
+      box-shadow: 0 1px 4px rgba(0,0,0,.08);
+      padding: 16px 20px;
+      margin-bottom: 16px;
+    }
+    .chart-title {
+      font-size: 13px; font-weight: 600;
+      color: #455a64; margin-bottom: 14px;
+    }
+    .chart-row {
+      display: flex; align-items: center; gap: 10px;
+      margin-bottom: 9px;
+    }
+    .chart-label {
+      width: 110px; flex-shrink: 0;
+      font-size: 12px; color: #455a64;
+    }
+    .chart-bar-bg {
+      flex: 1; height: 10px;
+      background: #f0f2f5; border-radius: 5px; overflow: hidden;
+    }
+    .chart-bar-fill {
+      height: 100%; border-radius: 5px;
+      transition: width .4s ease;
+    }
+    .chart-meta {
+      width: 72px; flex-shrink: 0;
+      font-size: 11px; color: #90a4ae;
+      text-align: right;
+    }
+
+    /* Search */
+    .search-wrap {
+      position: relative;
+      flex: 1;
+      max-width: 320px;
+    }
+    .search-wrap::before {
+      content: '🔍';
+      position: absolute;
+      left: 10px; top: 50%;
+      transform: translateY(-50%);
+      font-size: 13px;
+      pointer-events: none;
+    }
+    .search-input {
+      width: 100%;
+      padding: 7px 12px 7px 32px;
+      border: 1px solid #dde1e7;
+      border-radius: 8px;
+      font-size: 13px;
+      color: #2c3e50;
+      outline: none;
+      background: white;
+      transition: border-color .15s;
+    }
+    .search-input:focus { border-color: #3498db; }
+    .search-input::placeholder { color: #b0bec5; }
+    mark.hl { background: #fff176; border-radius: 2px; padding: 0 1px; }
+
+    /* Toast */
+    .toast {
+      position: fixed;
+      bottom: 28px; left: 50%;
+      transform: translateX(-50%) translateY(12px);
+      background: #2c3e50;
+      color: white;
+      font-size: 13px;
+      padding: 10px 20px;
+      border-radius: 8px;
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity .25s, transform .25s;
+      z-index: 9999;
+      white-space: nowrap;
+    }
+    .toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+
+    /* Lightbox */
+    #lightbox {
+      display: none;
+      position: fixed; inset: 0;
+      background: rgba(0,0,0,.8);
+      z-index: 999;
+      align-items: center;
+      justify-content: center;
+      cursor: zoom-out;
+      backdrop-filter: blur(4px);
+    }
+    #lightbox.open { display: flex; }
+    #lightbox img { max-width: 90vw; max-height: 88vh; border-radius: 12px; }
+    #lb-label {
+      position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%);
+      font-size: 13px; color: rgba(255,255,255,.6);
+    }
+  </style>
+</head>
+<body>
+
+<header>
+  <div>
+    <h1>📦 UserReport 뷰어</h1>
+    <p>ZIP 파일에서 UserReport.txt를 추출해 보여줍니다 · 여러 파일 동시 지원</p>
+  </div>
+  <div class="header-date" id="headerDate"></div>
+</header>
+
+<div class="container">
+
+  <!-- Initial drop zone -->
+  <div id="dropZone" class="drop-zone"
+       ondragover="onDrag(event,'over')"
+       ondragleave="onDrag(event,'leave')"
+       ondrop="onDrag(event,'drop')"
+       onclick="fi.click()">
+    <div class="dz-icon">📂</div>
+    <h2>ZIP 파일을 여기에 드래그하세요</h2>
+    <p>여러 파일을 한 번에 드래그해도 됩니다</p>
+    <button class="btn-pick" onclick="event.stopPropagation();fi.click()">파일 선택</button>
+  </div>
+  <input type="file" id="fi" accept=".zip" multiple onchange="onPick(this)">
+
+  <!-- Add more -->
+  <div id="addStrip" class="add-strip"
+       ondragover="onDrag(event,'over')"
+       ondragleave="onDrag(event,'leave')"
+       ondrop="onDrag(event,'drop')"
+       onclick="fi.click()">
+    <span>➕</span> ZIP 파일 추가하기 (드래그 또는 클릭)
+  </div>
+
+  <!-- Count bar -->
+  <div id="countBar" class="count-bar">
+    <div>
+      <h2>분석 결과</h2>
+      <small id="countLabel"></small>
+    </div>
+    <div class="search-wrap">
+      <input type="text" id="searchInput" class="search-input"
+             placeholder="제보 내용 검색..." oninput="onSearch(this.value)">
+    </div>
+    <button class="btn-clear" onclick="clearAll()">전체 초기화</button>
+  </div>
+
+  <!-- Error chart -->
+  <div id="chartSection" class="chart-section" style="display:none">
+    <div class="chart-title">오류 유형 분포</div>
+    <div id="chartBars"></div>
+  </div>
+
+  <!-- Cards -->
+  <div id="list"></div>
+
+</div>
+
+<div class="toast" id="toast"></div>
+
+<!-- Lightbox -->
+<div id="lightbox" onclick="closeLightbox()">
+  <img id="lb-img" src="" alt="">
+  <div id="lb-label"></div>
+</div>
+
+<script>
+// 버전 및 날짜 표시 (버전은 GitHub 커밋 수 자동 반영)
+(function() {
+  const days = ['일','월','화','수','목','금','토'];
+  const now = new Date();
+  const y = now.getFullYear();
+  const m = String(now.getMonth() + 1).padStart(2, '0');
+  const d = String(now.getDate()).padStart(2, '0');
+  const day = days[now.getDay()];
+
+  document.getElementById('headerDate').innerHTML = `
+    <div><span class="header-version" id="versionBadge">v···</span></div>
+    <div class="header-update"><strong>최신업데이트</strong> · ${y}.${m}.${d} ${day}요일</div>
+  `;
+
+  fetch('https://api.github.com/repos/rladntls94-tech/userreport-tool/commits?per_page=1')
+    .then(r => {
+      const link = r.headers.get('Link');
+      const count = link ? (parseInt(link.match(/[?&]page=(\d+)>; rel="last"/)?.[1]) || 1) : 1;
+      document.getElementById('versionBadge').textContent = `v1.0.${count}`;
+    })
+    .catch(() => {
+      document.getElementById('versionBadge').textContent = 'v1.0';
+    });
+})();
+
+let total = 0;
+const loadedFiles = new Set();   // 중복 방지
+const cardData    = new Map();   // idx → { text, name }
+let searchTerm    = '';
+
+function detectLang(text) {
+  if (!text) return { flag: '🌐', name: '알 수 없음' };
+  const t = text.replace(/\s/g, '');
+  const len = t.length || 1;
+  const ratio = (re) => (t.match(re) || []).length / len;
+
+  if (ratio(/[가-힯]/g) > 0.15) return { flag: '🇰🇷', name: '한국어' };
+  if (ratio(/[぀-ゟ]/g) > 0.1)  return { flag: '🇯🇵', name: '일본어' };
+  if (ratio(/[゠-ヿ]/g) > 0.1)  return { flag: '🇯🇵', name: '일본어' };
+  if (ratio(/[一-鿿]/g) > 0.15) return { flag: '🇨🇳', name: '중국어' };
+  if (ratio(/[Ѐ-ӿ]/g) > 0.15) return { flag: '🇷🇺', name: '러시아어' };
+  if (ratio(/[؀-ۿ]/g) > 0.15) return { flag: '🇸🇦', name: '아랍어' };
+  if (ratio(/[฀-๿]/g) > 0.15) return { flag: '🇹🇭', name: '태국어' };
+  if (ratio(/[֐-׿]/g) > 0.15) return { flag: '🇮🇱', name: '히브리어' };
+  if (ratio(/[Ͱ-Ͽ]/g) > 0.15) return { flag: '🇬🇷', name: '그리스어' };
+
+  // 라틴 계열: 빈출 단어로 구분
+  const words = new Set((text.toLowerCase().match(/\b[a-z]{2,}\b/g) || []));
+  const hit = (list) => list.filter(w => words.has(w)).length;
+
+  const candidates = [
+    { flag:'🇩🇪', name:'독일어',     kw:['die','der','und','nicht','das','mit','sich','auch','wird','haben'] },
+    { flag:'🇫🇷', name:'프랑스어',   kw:['les','des','une','dans','pour','pas','avec','par','mais','cette'] },
+    { flag:'🇪🇸', name:'스페인어',   kw:['los','las','una','del','con','por','que','como','pero','cuando'] },
+    { flag:'🇵🇹', name:'포르투갈어', kw:['uma','dos','com','por','para','não','mas','seu','sua','quando'] },
+    { flag:'🇮🇹', name:'이탈리아어', kw:['del','nel','gli','delle','dei','con','che','non','come','questo'] },
+    { flag:'🇳🇱', name:'네덜란드어', kw:['het','van','een','zijn','niet','maar','ook','naar','deze','door'] },
+    { flag:'🇵🇱', name:'폴란드어',   kw:['się','jest','nie','jako','ale','przez','tego','przy','oraz','tej'] },
+    { flag:'🇹🇷', name:'터키어',     kw:['bir','için','ile','var','çok','daha','benim','ama','ise','ben'] },
+    { flag:'🇸🇪', name:'스웨덴어',   kw:['och','det','att','som','men','för','inte','har','med','till'] },
+  ];
+
+  const scored = candidates.map(c => ({ ...c, score: hit(c.kw) }));
+  const best = scored.reduce((a, b) => a.score > b.score ? a : b);
+  if (best.score >= 2) return { flag: best.flag, name: best.name };
+
+  return { flag: '🇺🇸', name: '영어' };
+}
+
+function onDrag(e, type) {
+  e.preventDefault();
+  const targets = [document.getElementById('dropZone'), document.getElementById('addStrip')];
+  if (type === 'over')  targets.forEach(t => t.classList.add('dragover'));
+  if (type === 'leave') targets.forEach(t => t.classList.remove('dragover'));
+  if (type === 'drop') {
+    targets.forEach(t => t.classList.remove('dragover'));
+    handleFiles([...e.dataTransfer.files]);
+  }
+}
+function onPick(el) { handleFiles([...el.files]); el.value = ''; }
+
+function handleFiles(files) {
+  const zips = files.filter(f => f.name.toLowerCase().endsWith('.zip'));
+  if (!zips.length) return;
+
+  const dupes = zips.filter(f => loadedFiles.has(f.name));
+  const fresh = zips.filter(f => !loadedFiles.has(f.name));
+  fresh.forEach(f => loadedFiles.add(f.name));
+
+  if (dupes.length) showToast(`이미 추가된 파일 ${dupes.length}개 건너뜀`);
+  if (!fresh.length) return;
+
+  document.getElementById('dropZone').style.display = 'none';
+  document.getElementById('addStrip').style.display = 'flex';
+  document.getElementById('countBar').style.display = 'flex';
+  fresh.forEach(addCard);
+}
+
+function addCard(file) {
+  total++;
+  const idx = total;
+  const listEl = document.getElementById('list');
+
+  const card = document.createElement('div');
+  card.className = 'rcard';
+  card.id = 'card' + idx;
+  card.innerHTML = `
+    <div class="rcard-head">
+      <div class="rcard-num">${idx}</div>
+      <div class="rcard-name">${esc(file.name)}</div>
+    </div>
+    <div class="loading-row">
+      <div class="mini-spin"></div> 읽는 중...
+    </div>`;
+  listEl.appendChild(card);
+  updateCount();
+
+  readZipData(file).then(({ text, version, images, errorTypes }) => {
+    cardData.set(idx, { text: text || '', name: file.name, errorTypes: errorTypes || [] });
+    const hasContent = text !== null && text.trim() !== '';
+    const hasImages  = images && images.length > 0;
+
+    const imgGrid = hasImages ? `
+      <div class="img-grid">
+        ${images.map(img => `
+          <div class="img-item">
+            <img src="${img.dataUrl}" alt="${esc(img.name)}"
+                 onclick="openLightbox('${img.dataUrl}','${esc(img.name)}')">
+            <div class="img-label">${esc(img.name)}</div>
+          </div>`).join('')}
+      </div>` : '';
+
+    card.innerHTML = `
+      <div class="rcard-head">
+        <div class="rcard-num">${idx}</div>
+        <div class="rcard-name">${esc(file.name)}</div>
+        ${version ? `<span class="version-badge">v${esc(version)}</span>` : ''}
+        ${hasContent
+          ? (() => { const l = detectLang(text); return `<span class="rcard-status status-ok">${l.flag} ${l.name}</span>`; })()
+          : `<span class="rcard-status status-err">내용 없음</span>`
+        }
+      </div>
+      <div class="rcard-body">
+        <div class="report-text${hasContent ? '' : ' empty'}">${hasContent ? highlight(text, searchTerm) : 'UserReport.txt가 없거나 내용이 비어 있습니다.'}</div>
+        ${imgGrid}
+      </div>
+      ${hasContent ? `
+      <div class="rcard-foot">
+        <a class="translate-btn" href="#" onclick="event.preventDefault();openTranslate(${idx})">🌐 구글 번역</a>
+        <button class="copy-btn" onclick="doCopy(this,${idx})">📋 복사</button>
+      </div>` : ''}`;
+    updateChart();
+  }).catch(err => {
+    card.innerHTML = `
+      <div class="rcard-head">
+        <div class="rcard-num">${idx}</div>
+        <div class="rcard-name">${esc(file.name)}</div>
+        <span class="rcard-status status-err">오류</span>
+      </div>
+      <div class="rcard-body">
+        <div class="report-text empty">읽기 실패: ${esc(err.message)}</div>
+      </div>`;
+  });
+}
+
+async function readZipData(file) {
+  const zip = await JSZip.loadAsync(file);
+
+  const decode = async name => {
+    const entry = zip.file(name);
+    if (!entry) return null;
+    const buf = await entry.async('uint8array');
+    if (buf[0] === 0xFF && buf[1] === 0xFE) return new TextDecoder('utf-16le').decode(buf.slice(2));
+    if (buf[0] === 0xEF && buf[1] === 0xBB && buf[2] === 0xBF) return new TextDecoder('utf-8').decode(buf.slice(3));
+    return new TextDecoder('utf-8').decode(buf);
+  };
+
+  const IMAGE_EXT = /\.(png|jpe?g|gif|bmp|webp)$/i;
+  const imgEntries = Object.values(zip.files).filter(e => !e.dir && IMAGE_EXT.test(e.name));
+
+  const errorTypes = Object.keys(zip.files)
+    .filter(n => n.startsWith('ErrorType_') && n.endsWith('.txt'))
+    .map(n => n.replace('ErrorType_', '').replace('.txt', '').trim())
+    .filter(Boolean);
+
+  const [text, version, ...imgs] = await Promise.all([
+    decode('UserReport.txt'),
+    decode('GameVersion.txt'),
+    ...imgEntries.map(async e => {
+      const b64 = await e.async('base64');
+      const ext = e.name.split('.').pop().toLowerCase().replace('jpg', 'jpeg');
+      return { name: e.name.split('/').pop(), dataUrl: `data:image/${ext};base64,${b64}` };
+    }),
+  ]);
+
+  return { text, version: version ? version.trim() : null, images: imgs, errorTypes };
+}
+
+function updateCount() {
+  const visible = [...document.querySelectorAll('.rcard')].filter(c => c.style.display !== 'none').length;
+  const label = searchTerm
+    ? `${visible}개 표시 중 · 전체 ${total}개`
+    : `총 ${total}개 파일`;
+  document.getElementById('countLabel').textContent = label;
+}
+
+function onSearch(val) {
+  searchTerm = val.trim();
+  const term = searchTerm.toLowerCase();
+  cardData.forEach((data, idx) => {
+    const card = document.getElementById('card' + idx);
+    if (!card) return;
+    const matches = !term ||
+      data.text.toLowerCase().includes(term) ||
+      data.name.toLowerCase().includes(term);
+    card.style.display = matches ? '' : 'none';
+    const textEl = card.querySelector('.report-text:not(.empty)');
+    if (textEl) textEl.innerHTML = highlight(data.text, searchTerm);
+  });
+  updateCount();
+}
+
+function highlight(rawText, term) {
+  const escaped = esc(rawText);
+  if (!term) return escaped;
+  const escapedTerm = esc(term).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  return escaped.replace(new RegExp(escapedTerm, 'gi'), m => `<mark class="hl">${m}</mark>`);
+}
+
+function showToast(msg) {
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.classList.add('show');
+  setTimeout(() => t.classList.remove('show'), 2500);
+}
+
+function clearAll() {
+  total = 0;
+  searchTerm = '';
+  loadedFiles.clear();
+  cardData.clear();
+  document.getElementById('list').innerHTML = '';
+  document.getElementById('searchInput').value = '';
+  document.getElementById('dropZone').style.display = 'block';
+  document.getElementById('addStrip').style.display = 'none';
+  document.getElementById('countBar').style.display = 'none';
+  document.getElementById('chartSection').style.display = 'none';
+  document.getElementById('chartBars').innerHTML = '';
+}
+
+function openLightbox(src, name) {
+  document.getElementById('lb-img').src = src;
+  document.getElementById('lb-label').textContent = name;
+  document.getElementById('lightbox').classList.add('open');
+}
+function closeLightbox() { document.getElementById('lightbox').classList.remove('open'); }
+document.addEventListener('keydown', e => { if (e.key === 'Escape') closeLightbox(); });
+
+function doCopy(btn, idx) {
+  const text = cardData.get(idx)?.text || '';
+  navigator.clipboard.writeText(text).then(() => {
+    btn.textContent = '✓ 복사됨';
+    btn.classList.add('copied');
+    setTimeout(() => { btn.innerHTML = '📋 복사'; btn.classList.remove('copied'); }, 1500);
+  });
+}
+
+function openTranslate(idx) {
+  const text = cardData.get(idx)?.text || '';
+  window.open('https://translate.google.com/?sl=auto&tl=ko&text=' + encodeURIComponent(text) + '&op=translate', '_blank', 'noopener');
+}
+
+const CHART_COLORS = { '비정상적 종료':'#e74c3c', '실행오류':'#e67e22', '기타':'#95a5a6' };
+
+function updateChart() {
+  const counts = {};
+  cardData.forEach(d => (d.errorTypes || []).forEach(t => { counts[t] = (counts[t] || 0) + 1; }));
+  const entries = Object.entries(counts).sort((a, b) => b[1] - a[1]);
+  const section = document.getElementById('chartSection');
+  if (!entries.length) { section.style.display = 'none'; return; }
+  const total = [...cardData.values()].filter(d => d.errorTypes && d.errorTypes.length).length || 1;
+  section.style.display = 'block';
+  document.getElementById('chartBars').innerHTML = entries.map(([type, count]) => {
+    const pct = Math.round(count / total * 100);
+    const color = CHART_COLORS[type] || '#3498db';
+    return `<div class="chart-row">
+      <div class="chart-label">${esc(type)}</div>
+      <div class="chart-bar-bg"><div class="chart-bar-fill" style="width:${pct}%;background:${color}"></div></div>
+      <div class="chart-meta">${count}건 · ${pct}%</div>
+    </div>`;
+  }).join('');
+}
+
+function esc(s) {
+  return String(s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+</script>
+</body>
+</html>
