@@ -116,6 +116,17 @@
       cursor: pointer;
     }
     .btn-clear:hover { background: #dfe6e9; }
+    .btn-spec-toggle {
+      padding: 7px 16px;
+      background: #eef2f7;
+      color: #546e7a;
+      border: 1px solid #d0d9e2;
+      border-radius: 8px;
+      font-size: 12px;
+      cursor: pointer;
+      font-weight: 500;
+    }
+    .btn-spec-toggle:hover { background: #e1e8f0; }
 
     /* Report cards */
     .rcard {
@@ -445,6 +456,11 @@
     <button class="btn-clear" onclick="clearAll()">전체 초기화</button>
   </div>
 
+  <!-- PC 스펙 전체 토글 -->
+  <div id="specToggleBar" style="display:none;margin-bottom:12px;">
+    <button class="btn-spec-toggle" id="specToggleBtn" onclick="toggleAllSpecs()">🖥️ PC 스펙 모두 열기</button>
+  </div>
+
   <!-- Error chart -->
   <div id="chartSection" class="chart-section" style="display:none">
     <div class="chart-title">오류 유형 분포</div>
@@ -618,6 +634,7 @@ function addCard(file) {
         <button class="copy-btn" onclick="doCopy(this,${idx})">📋 복사</button>
       </div>` : ''}`;
     updateChart();
+    if (dxdiag) document.getElementById('specToggleBar').style.display = 'block';
   }).catch(err => {
     card.innerHTML = `
       <div class="rcard-head">
@@ -713,10 +730,10 @@ function renderSpec(spec) {
   return `
     <div class="spec-section">
       <div class="spec-header" onclick="toggleSpec(this)">
-        🖥️ PC 스펙 (DxDiag)
-        <span class="spec-toggle">▼</span>
+        🖥️ PC 스펙
+        <span class="spec-toggle collapsed">▼</span>
       </div>
-      <div class="spec-grid">
+      <div class="spec-grid" style="display:none">
         ${row('💿', 'OS', osShort)}
         ${row('🔲', 'DirectX', spec.dx)}
         ${row('⚡', 'CPU', cpuShort, !spec.gpu)}
@@ -727,12 +744,35 @@ function renderSpec(spec) {
     </div>`;
 }
 
+let specsExpanded = false;
+
 function toggleSpec(header) {
   const grid = header.nextElementSibling;
   const arrow = header.querySelector('.spec-toggle');
   const hidden = grid.style.display === 'none';
   grid.style.display = hidden ? 'grid' : 'none';
   arrow.classList.toggle('collapsed', !hidden);
+  updateSpecToggleBtn();
+}
+
+function toggleAllSpecs() {
+  specsExpanded = !specsExpanded;
+  document.querySelectorAll('.spec-section').forEach(sec => {
+    const grid = sec.querySelector('.spec-grid');
+    const arrow = sec.querySelector('.spec-toggle');
+    grid.style.display = specsExpanded ? 'grid' : 'none';
+    arrow.classList.toggle('collapsed', !specsExpanded);
+  });
+  updateSpecToggleBtn();
+}
+
+function updateSpecToggleBtn() {
+  const sections = document.querySelectorAll('.spec-section');
+  if (!sections.length) return;
+  const openCount = [...sections].filter(s => s.querySelector('.spec-grid').style.display !== 'none').length;
+  specsExpanded = openCount > sections.length / 2;
+  const btn = document.getElementById('specToggleBtn');
+  if (btn) btn.textContent = specsExpanded ? '🖥️ PC 스펙 모두 접기' : '🖥️ PC 스펙 모두 열기';
 }
 
 function updateCount() {
@@ -785,6 +825,8 @@ function clearAll() {
   document.getElementById('countBar').style.display = 'none';
   document.getElementById('chartSection').style.display = 'none';
   document.getElementById('chartBars').innerHTML = '';
+  document.getElementById('specToggleBar').style.display = 'none';
+  specsExpanded = false;
 }
 
 function openLightbox(src, name) {
