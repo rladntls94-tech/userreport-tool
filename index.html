@@ -682,7 +682,13 @@ async function readZipData(file) {
     const buf = await dxEntry.async('uint8array');
     if (buf[0] === 0xFF && buf[1] === 0xFE) return new TextDecoder('utf-16le').decode(buf.slice(2));
     if (buf[0] === 0xEF && buf[1] === 0xBB && buf[2] === 0xBF) return new TextDecoder('utf-8').decode(buf.slice(3));
-    return new TextDecoder('utf-8').decode(buf);
+    // GBK(중국어/일부 윈도우 DxDiag) 폴백: UTF-8로 읽었을 때 대체문자가 많으면 GBK 재시도
+    const utf8 = new TextDecoder('utf-8').decode(buf);
+    const badCount = (utf8.match(/�/g) || []).length;
+    if (badCount > 3) {
+      try { return new TextDecoder('gbk').decode(buf); } catch(e) {}
+    }
+    return utf8;
   })() : null;
 
   const [text, version, ...imgs] = await Promise.all([
@@ -708,9 +714,26 @@ function parseDxDiag(text) {
   const gpu     = get(/^\s*Card name:\s*(.+)/m);
   const display = get(/^\s*Current Mode:\s*(.+)/m);
   const dx      = get(/^\s*DirectX Version:\s*(.+)/m);
+  const maker   = get(/^\s*System Manufacturer:\s*(.+)/m);
+  const model   = get(/^\s*System Model:\s*(.+)/m);
 
   if (!os && !cpu && !ram && !gpu) return null;
-  return { os, cpu, ram, gpu, display, dx };
+  return { os, cpu, ram, gpu, display, dx, maker, model };
+}
+
+function cleanOS(os) {
+  if (!os) return null;
+  // 괄호 속 빌드 정보 제거
+  let s = os.replace(/\s*\([^)]+\)/g, '').trim();
+  // "Windows X [깨진에디션명] 64-bit" → 에디션 부분에 비ASCII 문자 있으면 제거
+  const win  = s.match(/^(Windows\s+\d+(?:\.\d+)?(?:\s+\w+)?)/i)?.[1]?.trim();
+  const bits = s.match(/(64|32)-bit/i)?.[0];
+  if (win && bits) {
+    const editionPart = s.replace(win, '').replace(bits, '').trim();
+    const hasGarbled = editionPart.length > 0 && /[^\x20-\x7E]/.test(editionPart);
+    if (hasGarbled) return `${win} ${bits}`;
+  }
+  return s;
 }
 
 function renderSpec(spec) {
@@ -724,8 +747,21 @@ function renderSpec(spec) {
       </div>
     </div>` : '';
 
-  const osShort = spec.os ? spec.os.replace(/\s*\(.*?\)/g, '').trim() : null;
+  const osShort  = cleanOS(spec.os);
   const cpuShort = spec.cpu ? spec.cpu.replace(/\(.*?\)/g, '').replace(/\s+/g, ' ').trim() : null;
+
+  // 제조사/모델 표시
+  const isApple  = spec.maker && /apple/i.test(spec.maker);
+  const modelStr = (() => {
+    if (!spec.maker && !spec.model) return null;
+    if (isApple) {
+      // "MacBookPro16,4" → "MacBook Pro 16,4"
+      const pretty = (spec.model || '').replace(/([a-z])([A-Z0-9])/g, '$1 $2').replace(/([A-Za-z])(\d)/g, '$1 $2');
+      return `🍎 ${pretty} (Boot Camp)`;
+    }
+    const m = [spec.maker, spec.model].filter(Boolean).join(' · ');
+    return m !== 'To Be Filled By O.E.M. · To Be Filled By O.E.M.' ? m : null;
+  })();
 
   return `
     <div class="spec-section">
@@ -736,10 +772,11 @@ function renderSpec(spec) {
       <div class="spec-grid" style="display:none">
         ${row('💿', 'OS', osShort)}
         ${row('🔲', 'DirectX', spec.dx)}
-        ${row('⚡', 'CPU', cpuShort, !spec.gpu)}
+        ${row('⚡', 'CPU', cpuShort, !spec.gpu && !modelStr)}
         ${row('🎮', 'GPU', spec.gpu)}
         ${row('🧠', 'RAM', spec.ram)}
         ${row('🖥', '해상도', spec.display)}
+        ${row('💻', '기기', modelStr, true)}
       </div>
     </div>`;
 }
