@@ -390,6 +390,64 @@
     .spec-label { font-size: 10px; color: #90a4ae; font-weight: 600; text-transform: uppercase; letter-spacing: 0.4px; margin-bottom: 2px; }
     .spec-value { font-size: 12px; color: #37474f; line-height: 1.4; word-break: break-word; }
 
+    /* Changelog 모달 */
+    #changelogModal {
+      display: none;
+      position: fixed; inset: 0;
+      background: rgba(0,0,0,.5);
+      z-index: 1000;
+      align-items: flex-start;
+      justify-content: flex-end;
+      padding: 70px 28px 0 0;
+      backdrop-filter: blur(3px);
+    }
+    #changelogModal.open { display: flex; }
+    .cl-panel {
+      background: white;
+      border-radius: 14px;
+      box-shadow: 0 8px 32px rgba(0,0,0,.18);
+      width: 340px;
+      max-height: 520px;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+      animation: clSlide .18s ease;
+    }
+    @keyframes clSlide { from { opacity:0; transform:translateY(-8px); } to { opacity:1; transform:none; } }
+    .cl-header {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 14px 18px;
+      border-bottom: 1px solid #f0f2f5;
+      font-size: 14px; font-weight: 700; color: #2c3e50;
+    }
+    .cl-close {
+      background: none; border: none; font-size: 16px;
+      color: #90a4ae; cursor: pointer; padding: 2px 6px; border-radius: 4px;
+    }
+    .cl-close:hover { background: #f5f5f5; color: #455a64; }
+    .cl-list { overflow-y: auto; flex: 1; padding: 8px 0; }
+    .cl-item {
+      padding: 10px 18px;
+      border-bottom: 1px solid #f8f9fa;
+    }
+    .cl-item:last-child { border-bottom: none; }
+    .cl-meta {
+      display: flex; align-items: center; gap: 6px; margin-bottom: 4px;
+    }
+    .cl-num { font-size: 11px; font-weight: 700; color: #1a1a2e; font-family: monospace; }
+    .cl-tag {
+      font-size: 10px; font-weight: 600;
+      padding: 1px 7px; border-radius: 10px;
+    }
+    .cl-tag.feat   { background: #e3f2fd; color: #1565c0; }
+    .cl-tag.fix    { background: #fce4ec; color: #c62828; }
+    .cl-tag.update { background: #f3e5f5; color: #6a1b9a; }
+    .cl-date { font-size: 11px; color: #b0bec5; margin-left: auto; }
+    .cl-msg { font-size: 12px; color: #546e7a; line-height: 1.5; }
+    .cl-loading { padding: 24px; text-align: center; color: #90a4ae; font-size: 13px; }
+    .header-version { cursor: pointer; }
+    .header-version:hover { background: rgba(255,255,255,0.75) !important; }
+
     /* Lightbox */
     #lightbox {
       display: none;
@@ -474,6 +532,17 @@
 
 <div class="toast" id="toast"></div>
 
+<!-- Changelog 모달 -->
+<div id="changelogModal" onclick="if(event.target===this)closeChangelog()">
+  <div class="cl-panel">
+    <div class="cl-header">
+      📋 수정 내역
+      <button class="cl-close" onclick="closeChangelog()">✕</button>
+    </div>
+    <div id="changelogList" class="cl-list"></div>
+  </div>
+</div>
+
 <!-- Lightbox -->
 <div id="lightbox" onclick="closeLightbox()">
   <img id="lb-img" src="" alt="">
@@ -499,7 +568,10 @@
     .then(r => {
       const link = r.headers.get('Link');
       const count = link ? (parseInt(link.match(/[?&]page=(\d+)>; rel="last"/)?.[1]) || 1) : 1;
-      document.getElementById('versionBadge').textContent = `v1.0.${count}`;
+      const badge = document.getElementById('versionBadge');
+      badge.textContent = `v1.0.${count}`;
+      badge.title = '클릭하여 수정 내역 보기';
+      badge.onclick = openChangelog;
     })
     .catch(() => {
       document.getElementById('versionBadge').textContent = 'v1.0';
@@ -911,6 +983,55 @@ function updateChart() {
 
 function esc(s) {
   return String(s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+
+let changelogLoaded = false;
+
+function openChangelog() {
+  document.getElementById('changelogModal').classList.add('open');
+  if (!changelogLoaded) loadChangelog();
+}
+
+function closeChangelog() {
+  document.getElementById('changelogModal').classList.remove('open');
+}
+
+document.addEventListener('keydown', e => {
+  if (e.key === 'Escape') { closeLightbox(); closeChangelog(); }
+});
+
+async function loadChangelog() {
+  const list = document.getElementById('changelogList');
+  list.innerHTML = '<div class="cl-loading">불러오는 중...</div>';
+  try {
+    const r = await fetch('https://api.github.com/repos/rladntls94-tech/userreport-tool/commits?per_page=50');
+    const link = r.headers.get('Link');
+    const total = link ? (parseInt(link.match(/[?&]page=(\d+)>; rel="last"/)?.[1]) || 1) : 1;
+    const commits = await r.json();
+    changelogLoaded = true;
+    list.innerHTML = commits.map((c, i) => {
+      const msg   = c.commit.message.trim();
+      const dt    = new Date(c.commit.committer.date);
+      const dateStr = `${dt.getFullYear()}.${String(dt.getMonth()+1).padStart(2,'0')}.${String(dt.getDate()).padStart(2,'0')}`;
+      const num   = total - i;
+      const isFeat   = /^feat[\s:]/i.test(msg);
+      const isFix    = /^fix[\s:]/i.test(msg);
+      const tag   = isFeat ? '<span class="cl-tag feat">기능</span>'
+                  : isFix  ? '<span class="cl-tag fix">수정</span>'
+                  :           '<span class="cl-tag update">업데이트</span>';
+      const cleanMsg = msg.replace(/^(feat|fix|update)[\s:：]*/i, '').trim();
+      return `<div class="cl-item">
+        <div class="cl-meta">
+          <span class="cl-num">v1.0.${num}</span>
+          ${tag}
+          <span class="cl-date">${dateStr}</span>
+        </div>
+        <div class="cl-msg">${esc(cleanMsg)}</div>
+      </div>`;
+    }).join('');
+  } catch(e) {
+    list.innerHTML = '<div class="cl-loading">불러오기 실패 (네트워크 오류)</div>';
+  }
 }
 </script>
 </body>
